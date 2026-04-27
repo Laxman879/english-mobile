@@ -1,0 +1,27 @@
+{
+  "expo": {
+    "name": "English Learning",
+    "slug": "english-learning-mobile",
+    "owner": "laxman99",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "scheme": "englishapp",
+    "userInterfaceStyle": "automatic",
+    "android": {
+      "package": "com.englishlearning.app",
+      "permissions": [
+        "android.permission.FOREGROUND_SERVICE",
+        "android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK"
+      ]
+    },
+    "plugins": [
+      "expo-router",
+      "expo-asset",
+      "expo-font",
+      "expo-web-browser"
+    ],
+    "experiments": {
+      "typedRoutes": true
+    }
+  }
+}

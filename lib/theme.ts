@@ -1,0 +1,20 @@
+// Matches web app CSS variables exactly — dark theme
+export const C = {
+  bg:          '#0d1117',
+  card:        '#161b22',
+  card2:       '#1c2333',
+  border:      '#21262d',
+  text:        '#e6edf3',
+  text2:       '#b0bec5',
+  muted:       '#484f58',
+  primary:     '#3fb950',
+  primaryDk:   '#2ea043',
+  primaryFg:   '#ffffff',
+  primarySoft: '#0d2818',
+  blue:        '#58a6ff',
+  blueSoft:    '#0d2149',
+  fire:        '#fb923c',
+  fireSoft:    '#2d1a0a',
+  inputBg:     '#1c2333',
+  nav:         'rgba(13,17,23,0.96)',
+};
