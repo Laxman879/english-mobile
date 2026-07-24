@@ -7,6 +7,11 @@
     "orientation": "portrait",
     "scheme": "englishapp",
     "userInterfaceStyle": "automatic",
+    "ios": {
+      "infoPlist": {
+        "UIBackgroundModes": ["audio"]
+      }
+    },
     "android": {
       "package": "com.englishlearning.app",
       "permissions": [
@@ -22,6 +27,12 @@
     ],
     "experiments": {
       "typedRoutes": true
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "cb6d67a7-cafb-42c1-809f-267669c85f77"
+      }
     }
   }
 }

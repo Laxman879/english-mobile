@@ -6,7 +6,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import * as Speech from 'expo-speech';
+import { audioPlayer, type QueueItem } from '../../lib/audioPlayer';
 import api from '../../lib/api';
 import { C } from '../../lib/theme';
 import ConfirmModal from '../../components/ConfirmModal';
@@ -63,44 +63,39 @@ export default function PlaylistsScreen() {
       Object.values(w.translations)[0] || w.meaning;
   };
 
-  const speakAt = useCallback((items: ExpandedItem[], idx: number) => {
-    if (idx >= items.length) {
-      Speech.stop(); setIsPlaying(false); setPlayingId(null); setPlayIdx(0);
-      return;
-    }
-    Speech.stop();
-    const item = items[idx];
-    setPlayIdx(idx); playIdxRef.current = idx;
+  // Flatten playlist items into a TTS queue. Words -> English (+ Telugu if any);
+  // stories are split into <=200-char chunks (Google TTS limit).
+  const buildQueue = (items: ExpandedItem[]): QueueItem[] => {
+    const q: QueueItem[] = [];
+    items.forEach((item, di) => {
+      if (item.kind === 'story') {
+        let chunk = '';
+        for (const w of item.storyText.split(/\s+/)) {
+          if ((chunk + ' ' + w).trim().length > 190) {
+            if (chunk.trim()) q.push({ text: chunk.trim(), lang: 'en', displayIdx: di });
+            chunk = w;
+          } else {
+            chunk = (chunk + ' ' + w).trim();
+          }
+        }
+        if (chunk.trim()) q.push({ text: chunk.trim(), lang: 'en', displayIdx: di });
+      } else {
+        q.push({ text: item.word, lang: 'en', displayIdx: di });
+        const telugu = (item as any).translations?.telugu || (item as any).translations?.Telugu;
+        if (telugu) q.push({ text: telugu, lang: 'te', displayIdx: di });
+      }
+    });
+    return q;
+  };
 
-    const onDone = () => {
-      if (!isPlayingRef.current) return;
-      speakAt(playItemsRef.current, playIdxRef.current + 1);
-    };
-
-    if (item.kind === 'story') {
-      Speech.speak(item.storyText, { language: 'en-US', rate: 0.85, onDone, onError: onDone });
-    } else {
-      const telugu = (item as any).translations?.telugu || '';
-      Speech.speak(item.word, {
-        language: 'en-US', rate: 0.85,
-        onDone: () => {
-          if (!isPlayingRef.current) return;
-          if (telugu) {
-            Speech.speak(telugu, { language: 'te-IN', rate: 0.8, onDone, onError: onDone });
-          } else { onDone(); }
-        },
-        onError: onDone,
-      });
-    }
+  const stopPlayback = useCallback(() => {
+    audioPlayer.stop();
+    setIsPlaying(false); setPlayingId(null); setPlayItems([]); setPlayIdx(0);
   }, []);
 
   const handlePlay = useCallback(async (pl: Playlist) => {
-    if (playingId === pl._id) {
-      Speech.stop(); setIsPlaying(false); setPlayingId(null); setPlayItems([]); setPlayIdx(0);
-      isPlayingRef.current = false;
-      return;
-    }
-    Speech.stop();
+    if (playingId === pl._id) { stopPlayback(); return; }
+    await audioPlayer.stop();
     try {
       const { data } = await api.get(`/playlists/${pl._id}`);
       const items: ExpandedItem[] = [
@@ -108,21 +103,22 @@ export default function PlaylistsScreen() {
         ...(data.words   || []).map((w: PlaylistWord)  => ({ _id: w._id, kind: 'word'  as const, word: w.word, meaning: w.meaning, translations: w.translations })),
       ];
       if (!items.length) { alert('No items in this playlist yet.'); return; }
-      playItemsRef.current = items;
-      setPlayItems(items); setPlayIdx(0); setPlayingId(pl._id);
-      setIsPlaying(true); isPlayingRef.current = true;
-      speakAt(items, 0);
+      setPlayItems(items); setPlayIdx(0); setPlayingId(pl._id); setIsPlaying(true);
+      audioPlayer.start(
+        buildQueue(items),
+        (di) => setPlayIdx(di),
+        () => { setIsPlaying(false); setPlayingId(null); setPlayItems([]); setPlayIdx(0); },
+      );
     } catch { alert('Failed to load playlist.'); }
-  }, [playingId, speakAt]);
+  }, [playingId, stopPlayback]);
 
   const handleSkipNext = () => {
     const next = playIdx + 1;
-    if (next < playItems.length) speakAt(playItems, next);
+    if (next < playItems.length) audioPlayer.skipToDisplay(next);
   };
 
   const handleSkipBack = () => {
-    const prev = Math.max(0, playIdx - 1);
-    speakAt(playItems, prev);
+    audioPlayer.skipToDisplay(Math.max(0, playIdx - 1));
   };
 
   const toggleExpand = useCallback(async (id: string) => {
@@ -179,7 +175,7 @@ export default function PlaylistsScreen() {
     try {
       await api.delete(`/playlists/${confirmId}`);
       setPlaylists(prev => prev.filter(p => p._id !== confirmId));
-      if (playingId === confirmId) { Speech.stop(); setPlayingId(null); setIsPlaying(false); }
+      if (playingId === confirmId) { stopPlayback(); }
       if (expandedId === confirmId) setExpandedId(null);
       setConfirmId(null);
     } finally { setDeleting(false); }
@@ -226,9 +222,7 @@ export default function PlaylistsScreen() {
             <TouchableOpacity style={s.nowBtn} onPress={handleSkipBack}>
               <Ionicons name="play-skip-back" size={16} color="#fff" />
             </TouchableOpacity>
-            <TouchableOpacity style={s.nowPlayBtn} onPress={() => {
-              Speech.stop(); setIsPlaying(false); setPlayingId(null); isPlayingRef.current = false;
-            }}>
+            <TouchableOpacity style={s.nowPlayBtn} onPress={stopPlayback}>
               <Ionicons name="pause" size={18} color={C.primary} />
             </TouchableOpacity>
             <TouchableOpacity style={s.nowBtn} onPress={handleSkipNext}>
