@@ -152,7 +152,7 @@ const s = StyleSheet.create({
   label:       { fontSize: 10, fontWeight: '800', color: C.muted, letterSpacing: 1.5 },
   inputRow:    { flexDirection: 'row', alignItems: 'center', backgroundColor: C.inputBg, borderRadius: 14, borderWidth: 1, borderColor: C.border, paddingHorizontal: 12, height: 48 },
   inputIcon:   { marginRight: 8 },
-  input:       { flex: 1, fontSize: 14, color: C.text },
+  input:       { flex: 1, fontSize: 14, color: C.text, ...Platform.select({ web: { outlineStyle: 'none' } }) },
   eyeBtn:      { padding: 4 },
   forgotBtn:   { alignSelf: 'flex-end', marginTop: -8 },
   forgotText:  { fontSize: 12, fontWeight: '700', color: C.primary },
