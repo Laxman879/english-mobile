@@ -6,7 +6,8 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { audioPlayer, type QueueItem } from '../../lib/audioPlayer';
+import TrackPlayer, { Event, useTrackPlayerEvents, type Track } from 'react-native-track-player';
+import { setupPlayer, ttsUrl } from '../../lib/trackPlayer';
 import api from '../../lib/api';
 import { C } from '../../lib/theme';
 import ConfirmModal from '../../components/ConfirmModal';
@@ -63,63 +64,75 @@ export default function PlaylistsScreen() {
       Object.values(w.translations)[0] || w.meaning;
   };
 
-  // Flatten playlist items into a TTS queue. Words -> English (+ Telugu if any);
-  // stories are split into <=200-char chunks (Google TTS limit).
-  const buildQueue = (items: ExpandedItem[]): QueueItem[] => {
-    const q: QueueItem[] = [];
+  // Maps each Track Player queue index back to its playlist item index
+  // (a word can be 2 tracks: English + Telugu).
+  const displayMap = useRef<number[]>([]);
+
+  // Keep the "Now Playing" index synced with the active track + handle end.
+  useTrackPlayerEvents([Event.PlaybackActiveTrackChanged, Event.PlaybackQueueEnded], (event) => {
+    if (event.type === Event.PlaybackQueueEnded) {
+      setIsPlaying(false); setPlayingId(null); setPlayItems([]); setPlayIdx(0);
+      return;
+    }
+    const idx = (event as { index?: number }).index;
+    if (typeof idx === 'number') setPlayIdx(displayMap.current[idx] ?? 0);
+  });
+
+  // Build Track Player tracks (Google TTS URLs). Words -> English (+ Telugu);
+  // stories split into <=190-char chunks.
+  const buildTracks = (items: ExpandedItem[]): Track[] => {
+    const tracks: Track[] = [];
+    const map: number[] = [];
+    const push = (text: string, lang: string, title: string, di: number) => {
+      tracks.push({ id: `${di}-${tracks.length}`, url: ttsUrl(text, lang), title, artist: 'Polyglot Punch' });
+      map.push(di);
+    };
     items.forEach((item, di) => {
       if (item.kind === 'story') {
         let chunk = '';
         for (const w of item.storyText.split(/\s+/)) {
           if ((chunk + ' ' + w).trim().length > 190) {
-            if (chunk.trim()) q.push({ text: chunk.trim(), lang: 'en', displayIdx: di });
+            if (chunk.trim()) push(chunk.trim(), 'en', '📖 Story', di);
             chunk = w;
           } else {
             chunk = (chunk + ' ' + w).trim();
           }
         }
-        if (chunk.trim()) q.push({ text: chunk.trim(), lang: 'en', displayIdx: di });
+        if (chunk.trim()) push(chunk.trim(), 'en', '📖 Story', di);
       } else {
-        q.push({ text: item.word, lang: 'en', displayIdx: di });
+        push(item.word, 'en', item.word, di);
         const telugu = (item as any).translations?.telugu || (item as any).translations?.Telugu;
-        if (telugu) q.push({ text: telugu, lang: 'te', displayIdx: di });
+        if (telugu) push(telugu, 'te', item.word, di);
       }
     });
-    return q;
+    displayMap.current = map;
+    return tracks;
   };
 
-  const stopPlayback = useCallback(() => {
-    audioPlayer.stop();
+  const stopPlayback = useCallback(async () => {
+    try { await TrackPlayer.reset(); } catch {}
     setIsPlaying(false); setPlayingId(null); setPlayItems([]); setPlayIdx(0);
   }, []);
 
   const handlePlay = useCallback(async (pl: Playlist) => {
     if (playingId === pl._id) { stopPlayback(); return; }
-    await audioPlayer.stop();
     try {
+      await setupPlayer();
+      await TrackPlayer.reset();
       const { data } = await api.get(`/playlists/${pl._id}`);
       const items: ExpandedItem[] = [
         ...(data.stories || []).map((s: PlaylistStory) => ({ _id: s._id, kind: 'story' as const, storyText: s.storyText })),
         ...(data.words   || []).map((w: PlaylistWord)  => ({ _id: w._id, kind: 'word'  as const, word: w.word, meaning: w.meaning, translations: w.translations })),
       ];
       if (!items.length) { alert('No items in this playlist yet.'); return; }
+      await TrackPlayer.add(buildTracks(items));
       setPlayItems(items); setPlayIdx(0); setPlayingId(pl._id); setIsPlaying(true);
-      audioPlayer.start(
-        buildQueue(items),
-        (di) => setPlayIdx(di),
-        () => { setIsPlaying(false); setPlayingId(null); setPlayItems([]); setPlayIdx(0); },
-      );
+      await TrackPlayer.play();
     } catch { alert('Failed to load playlist.'); }
   }, [playingId, stopPlayback]);
 
-  const handleSkipNext = () => {
-    const next = playIdx + 1;
-    if (next < playItems.length) audioPlayer.skipToDisplay(next);
-  };
-
-  const handleSkipBack = () => {
-    audioPlayer.skipToDisplay(Math.max(0, playIdx - 1));
-  };
+  const handleSkipNext = () => { TrackPlayer.skipToNext().catch(() => {}); };
+  const handleSkipBack = () => { TrackPlayer.skipToPrevious().catch(() => {}); };
 
   const toggleExpand = useCallback(async (id: string) => {
     if (expandedId === id) { setExpandedId(null); return; }
