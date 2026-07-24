@@ -10,7 +10,7 @@
         "buildType": "apk"
       },
       "env": {
-        "EXPO_PUBLIC_API_URL": "https://english-backend-u6pg.onrender.com/api"
+        "EXPO_PUBLIC_API_URL": "https://english-backend-hmw5.onrender.com/api"
       }
     },
     "production": {
